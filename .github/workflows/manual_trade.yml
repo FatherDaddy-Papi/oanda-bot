@@ -1,0 +1,100 @@
+name: Manual Trade
+
+# Triggered by the "Run workflow" button in the Actions tab.
+# No PC required — runs on GitHub's servers.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action'
+        required: true
+        default: 'open'
+        type: choice
+        options:
+          - open
+          - close
+          - close-all
+      instrument:
+        description: 'Instrument (ignored for close-all)'
+        required: true
+        default: 'EUR_USD'
+        type: choice
+        options:
+          - EUR_USD
+          - GBP_USD
+          - USD_JPY
+          - AUD_USD
+          - USD_CAD
+          - EUR_JPY
+          - GBP_JPY
+          - XAU_USD
+          - XAG_USD
+          - SPX500_USD
+          - NAS100_USD
+          - US30_USD
+          - DE30_EUR
+          - BCO_USD
+          - WTICO_USD
+          - NATGAS_USD
+      side:
+        description: 'Side (only used for open)'
+        required: false
+        default: 'buy'
+        type: choice
+        options:
+          - buy
+          - sell
+      units:
+        description: 'Units, positive integer (only used for open)'
+        required: false
+        default: '1000'
+        type: string
+      stop_pips:
+        description: 'Stop loss in pips, 0 = no stop (only used for open)'
+        required: false
+        default: '30'
+        type: string
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install deps
+        run: pip install --quiet oandapyV20 requests six
+
+      - name: OPEN trade
+        if: inputs.action == 'open'
+        env:
+          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
+          OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+          OANDA_ENV: practice
+          TRADE_INSTRUMENT: ${{ inputs.instrument }}
+          TRADE_SIDE: ${{ inputs.side }}
+          TRADE_UNITS: ${{ inputs.units }}
+          TRADE_STOP_PIPS: ${{ inputs.stop_pips }}
+        run: python cloud_trade.py
+
+      - name: CLOSE trade(s) in instrument
+        if: inputs.action == 'close'
+        env:
+          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
+          OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+          OANDA_ENV: practice
+          TRADE_INSTRUMENT: ${{ inputs.instrument }}
+        run: python cloud_close.py
+
+      - name: CLOSE ALL manual trades
+        if: inputs.action == 'close-all'
+        env:
+          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
+          OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+          OANDA_ENV: practice
+          TRADE_INSTRUMENT: ALL
+        run: python cloud_close.py
