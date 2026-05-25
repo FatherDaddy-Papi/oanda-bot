@@ -47,7 +47,7 @@ PIP = PIP_MAP.get(INSTRUMENT, 0.0001)
 # Strategy params
 GRAN = "H1"
 RSI_PERIOD = 2
-RSI_LO = 60  # TEMP: relaxed from 10 for live auto-fire demo. REVERT TO 10.
+RSI_LO = 10
 RSI_HI = 90
 SMA_EXIT = 5
 SMA_TREND = 200
