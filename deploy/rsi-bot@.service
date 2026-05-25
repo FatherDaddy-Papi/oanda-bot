@@ -1,0 +1,21 @@
+[Unit]
+Description=OANDA RSI(2)+SMA(200) bot for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=oandabot
+Group=oandabot
+WorkingDirectory=/opt/oanda-bots
+ExecStart=/opt/oanda-bots/.venv/bin/python /opt/oanda-bots/live.py %i
+Restart=always
+RestartSec=30
+StandardOutput=append:/var/log/oanda-bots/%i.log
+StandardError=append:/var/log/oanda-bots/%i.log
+# Don't let one bot consume the box
+MemoryMax=256M
+CPUQuota=20%
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,41 @@
+name: RSI Bot
+
+on:
+  schedule:
+    # Every hour at minute 5 — gives OANDA time to finalize the H1 candle that closed at :00.
+    # GitHub cron is best-effort; actual execution may lag 5-15 min.
+    - cron: '5 * * * *'
+  workflow_dispatch:  # adds a "Run workflow" button in the Actions UI for manual triggers
+
+# Don't kick off a second run if the previous one is still going (shouldn't happen but safety net).
+concurrency:
+  group: rsi-bot
+  cancel-in-progress: false
+
+jobs:
+  trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false  # if one instrument errors, the other still runs
+      matrix:
+        instrument: [EUR_USD, XAU_USD]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install deps
+        run: pip install --quiet oandapyV20 requests six python-dotenv
+
+      - name: Run tick for ${{ matrix.instrument }}
+        env:
+          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
+          OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+          OANDA_ENV: practice
+        run: python tick_once.py ${{ matrix.instrument }}
