@@ -17,9 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
-      fail-fast: false  # if one instrument errors, the other still runs
+      fail-fast: false  # if one instrument errors, the others still run
       matrix:
-        instrument: [EUR_USD, XAU_USD]
+        instrument: [EUR_USD, XAU_USD, NAS100_USD, XAG_USD, GBP_JPY]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
