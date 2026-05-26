@@ -16,6 +16,7 @@ from oandapyV20 import API
 from oandapyV20.endpoints.instruments import InstrumentsCandles
 from oandapyV20.endpoints import orders, trades as trades_ep, accounts
 from oandapyV20.exceptions import V20Error
+import risk_gate
 
 # Try to load .env for local dev; CI provides env vars directly via secrets
 try:
@@ -226,6 +227,15 @@ def main():
         if not (signal_long or signal_short):
             log("No signal.")
             return
+        try:
+            allow, reason = risk_gate.check(client, ACCOUNT_ID)
+        except Exception as e:
+            log(f"!! Risk gate query failed, blocking entry: {e}")
+            return
+        if not allow:
+            log(f"BLOCKED  {reason}")
+            return
+        log(f"Risk gate: {reason}")
         try:
             nav = get_nav()
         except Exception as e:
