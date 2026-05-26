@@ -20,24 +20,32 @@ The backtester uses per-instrument actual broker spreads, sampled across multipl
 - ❌ Entry execution lag (next-bar-open) not modeled.
 
 ### Gate 2 — Deflated Sharpe ≥ 0.95
-The strategy's Deflated Sharpe Ratio (Bailey & López de Prado 2014), computed over a configurable parameter grid, exceeds 0.95. Naive PSR is not enough — DSR must account for all parameter combinations explored, formally or informally.
+The strategy's Deflated Sharpe Ratio (Bailey & López de Prado 2014), computed over a configurable parameter grid, exceeds 0.95. Naive PSR is not enough — DSR must account for all parameter combinations explored, formally or informally. PBO (Probability of Backtest Overfitting) is checked alongside; PBO ≥ 0.50 fails the gate even if DSR clears 0.95, because that means the single best config can't be picked reliably in-sample.
 
-**Status: ❌ FAIL**
-- RSI(2)+SMA(200) DSR on the three post-slippage survivors: EUR_USD 0.36, NAS100_USD 0.52, GBP_JPY 0.51. None clear 0.95. See `deflated_sharpe.py`.
-- This is the gate that killed v1 of the strategy. Until a new candidate strategy passes it, this project does not advance.
+**Status (per strategy):**
+- **RSI(2)+SMA H1:** ❌ FAIL. DSR 0.36 / 0.52 / 0.51 across EUR_USD / NAS100_USD / GBP_JPY. See `deflated_sharpe.py`.
+- **Donchian H1:** ❌ FAIL. DSR 0.17 / 0.50 / 0.08 across same set. Two of three best configs have *negative* Sharpe. See `donchian_dsr.py`.
+- **Clenow-shaped D1 single-best:** ⚠️ MIXED. DSR 0.962 (clears) but PBO 0.838 (fails — flat parameter surface, in-sample best lands OOS-bottom 84% of splits). Equivalent to fail. See `clenow_dsr.py`.
+- **Clenow-shaped D1 ensemble (lookback averaged across {60,90,120,180}):** ✅ **PASS**. DSR 0.985, PBO 0.398, split-half halves within 0.07 Sharpe. Sharpe ann ~1.39 default, ~1.56 best. See `clenow_ensemble.py`.
+- The PASS applies *only* to the Clenow ensemble strategy. Deploying any other strategy resets this gate.
 
 ### Gate 3 — Out-of-sample validation
 Strategy parameters are frozen on data up to date X. Performance is then measured on data strictly after X, untouched during development. Profit factor degradation from in-sample to out-of-sample is < 30%.
 
-**Status: ❌ FAIL**
-- `validate.py` exists but its current call sites use whatever the latest tuned params are. No formal pre-registration of the parameter freeze date and the post-X data is required.
-- A new strategy must pass this *before* DSR is computed on the post-X window.
+**Status: ❌ FAIL** (for all strategies, including Clenow ensemble)
+- Split-half on Clenow ensemble (halves within 0.07 Sharpe) is a proxy but NOT a true OOS test — both halves were available during development.
+- **Formal OOS freeze for Clenow ensemble:**
+  - Freeze date: **2026-05-26** (today). Frozen config: lookback ensemble {60, 90, 120, 180}, ma_period = 100, top_k = 5. Universe and trend-strength definition as in `clenow_ensemble.py` at commit time.
+  - **OOS run scheduled: 2026-06-23** (4 weeks out). Until that date, no parameter edits to the ensemble. On that date, re-run the ensemble on the additional ~4 weeks of D1 data that did not exist today and compare per-week Sharpe to the in-sample mean.
+  - Pass criterion: OOS Sharpe (per-week) ≥ 0.10 (i.e. annualized ≥ ~0.72). OOS Sharpe degradation < 50% from in-sample 0.19.
+- Validity of the OOS test depends on this freeze being honored. If params are touched before 2026-06-23, the OOS clock restarts.
 
 ### Gate 4 — Multi-regime survival
 Strategy is profitable in at least two of: (a) high-vol crisis (e.g., COVID March 2020), (b) trending (e.g., 2022), (c) chop/range (e.g., much of 2024). Single-regime profitability does not count.
 
 **Status: ❌ FAIL**
-- Currently tested only on 2024–2026 H1 data. No regime decomposition.
+- RSI/Donchian tested only on 2024–2026 H1 data.
+- Clenow ensemble tested on 2021–2026 D1 data (5y, ~223 weekly observations). Split-half within 0.07 Sharpe is partial evidence both halves were positive, but no formal regime tagging done. Next session: tag weeks by volatility regime (e.g., VIX-equivalent percentile) and verify Sharpe stays positive in each regime independently.
 
 ### Gate 5 — Minimum trade count
 Backtest has ≥ 200 completed trades per instrument over the test window. Below that, stats are not statistically meaningful regardless of PF.
@@ -113,4 +121,4 @@ The bot has run for ≥ 6 months on a paper account using the same code, same in
 
 ---
 
-_Last reviewed: 2026-05-26. Owner: project maintainer. Generated alongside the slippage fix (commit 0fb76ac) and Deflated Sharpe analysis (commit 8b294d1)._
+_Last reviewed: 2026-05-26. Owner: project maintainer. Updated with Clenow ensemble Gate 2 PASS (commit pending) and Gate 3 OOS freeze (run scheduled 2026-06-23). All gates besides Gate 2 unchanged from prior review._
