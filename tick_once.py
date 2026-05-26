@@ -45,19 +45,23 @@ PIP_MAP = {
 }
 PIP = PIP_MAP.get(INSTRUMENT, 0.0001)
 
-# Strategy params
-GRAN = "H1"
+# Strategy params (M15 timeframe -- changed from H1 on 2026-05-26)
+# Note: this is exploratory on a non-edge strategy. M15 backtest shows
+# PF 0.92 on EUR_USD with realistic spread -- expected to bleed slowly.
+# Risk gate caps the damage. NOT on the path to real money.
+GRAN = "M15"
 RSI_PERIOD = 2
 RSI_LO = 10
 RSI_HI = 90
 SMA_EXIT = 5
-SMA_TREND = 200
-MAX_HOLD_HOURS = 10
+SMA_TREND = 800              # 800 M15 bars ~ 200 hours ~ 8 trading days (H1 equivalent)
+MAX_HOLD_HOURS = 2.5         # = 10 M15 bars. Mean-reversion signals decay fast on M15.
 ATR_PERIOD = 14
 STOP_ATR_MULTIPLE = 2.0
-RISK_PER_TRADE_PCT = 0.0025  # 0.25% of NAV per trade (1/4 Kelly)
+RISK_PER_TRADE_PCT = 0.0010  # 0.10% per trade -- quartered from H1's 0.25% to
+                              # compensate for ~5x trade frequency on M15
 BOT_TAG = f"rsi-bot-{INSTRUMENT}"
-UNITS_CAP = 50000  # hard cap on units, regardless of risk math
+UNITS_CAP = 50000
 
 client = API(access_token=API_TOKEN, environment=ENV)
 
@@ -101,7 +105,7 @@ def atr(bars, period=ATR_PERIOD):
 
 
 # --- broker ops ---
-def fetch_bars(n=260):
+def fetch_bars(n=1000):
     r = InstrumentsCandles(instrument=INSTRUMENT, params={"granularity": GRAN, "count": n, "price": "M"})
     client.request(r)
     cs = [c for c in r.response["candles"] if c.get("complete")]
@@ -130,11 +134,14 @@ def get_nav():
 
 
 def market_is_open(bars):
+    """Market is open if the most recent bar closed within the last hour.
+    On M15 (15-min bars), a healthy market means a new bar every 15min;
+    if the latest is >60min old we're either closed or there's an outage."""
     if not bars:
         return False
     last = datetime.fromisoformat(bars[-1]["time"].replace("Z", "+00:00"))
     age = (datetime.now(timezone.utc) - last).total_seconds()
-    return age < 180 * 60
+    return age < 60 * 60
 
 
 def place_market(side, units_abs, stop_price):
@@ -172,7 +179,7 @@ def hours_since(iso_ts):
 
 # --- main ---
 def main():
-    bars = fetch_bars(260)
+    bars = fetch_bars(1000)
     if not market_is_open(bars):
         log("Market closed. Skipping.")
         return
@@ -195,7 +202,7 @@ def main():
         pos = 1 if cu > 0 else -1 if cu < 0 else 0
 
     log(f"BAR {last_time}  close={last_close:.5f}  RSI={rsi_val:.1f}  "
-        f"SMA5={sma5:.5f}  SMA200={sma200:.5f}  ATR={atr_val:.5f}  pos={pos}")
+        f"SMA{SMA_EXIT}={sma5:.5f}  SMA{SMA_TREND}={sma200:.5f}  ATR={atr_val:.5f}  pos={pos}")
 
     # --- EXIT ---
     if open_trade and pos != 0:
