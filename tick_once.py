@@ -57,7 +57,13 @@ SMA_EXIT = 5
 SMA_TREND = 2400             # 2400 M5 bars = 200 hours = ~8 trading days (H1 equivalent)
 MAX_HOLD_HOURS = 0.83        # = 10 M5 bars = 50 min. Mean-reversion decays fast.
 ATR_PERIOD = 14
-STOP_ATR_MULTIPLE = 2.0
+STOP_ATR_MULTIPLE = 2.0       # broker-side stop at entry +/- 2.0 * ATR
+TAKE_PROFIT_ATR_MULTIPLE = 1.0  # broker-side take-profit at entry +/- 1.0 * ATR.
+                                # Together with stop = triple-barrier (Lopez de Prado):
+                                # profit-target / stop-loss / time -- first hit wins.
+                                # 1:2 R:R needs WR >= 67% to be profitable; backtest WR
+                                # is 58%, so this is craft not edge. SMA(5) software
+                                # exit and MAX_HOLD time exit remain as backstops.
 RISK_PER_TRADE_PCT = 0.0005  # 0.05% per trade -- halved from M15's 0.10% to
                               # compensate for ~3x trade frequency on M5
 BOT_TAG = f"rsi-bot-{INSTRUMENT}"
@@ -144,13 +150,14 @@ def market_is_open(bars):
     return age < 30 * 60
 
 
-def place_market(side, units_abs, stop_price):
+def place_market(side, units_abs, stop_price, take_profit_price):
     units = units_abs if side == 1 else -units_abs
     precision = 5 if PIP < 0.001 else 3
     data = {"order": {
         "instrument": INSTRUMENT, "units": str(units),
         "type": "MARKET", "timeInForce": "FOK", "positionFill": "DEFAULT",
         "stopLossOnFill": {"price": f"{round(stop_price, precision)}"},
+        "takeProfitOnFill": {"price": f"{round(take_profit_price, precision)}"},
         "clientExtensions": {"tag": BOT_TAG,
                               "id": f"{BOT_TAG}-{int(datetime.now(timezone.utc).timestamp())}"},
         "tradeClientExtensions": {"tag": BOT_TAG},
@@ -250,25 +257,30 @@ def main():
             return
         risk_dollars = nav * RISK_PER_TRADE_PCT
         stop_dist = STOP_ATR_MULTIPLE * atr_val
+        tp_dist = TAKE_PROFIT_ATR_MULTIPLE * atr_val
         units = int(max(1, min(UNITS_CAP, risk_dollars / stop_dist)))
         if signal_long:
             stop_price = last_close - stop_dist
+            tp_price = last_close + tp_dist
             try:
-                fill = place_market(1, units, stop_price)
+                fill = place_market(1, units, stop_price, tp_price)
                 if fill:
                     log(f"ENTRY LONG  units={units}  price={fill['price']}  "
-                        f"stop={stop_price:.5f}  risk={RISK_PER_TRADE_PCT*100:.2f}%nav")
+                        f"stop={stop_price:.5f}  tp={tp_price:.5f}  "
+                        f"risk={RISK_PER_TRADE_PCT*100:.2f}%nav")
                 else:
                     log("ENTRY LONG attempted, no fill")
             except V20Error as e:
                 log(f"!! Entry failed: {e}")
         else:
             stop_price = last_close + stop_dist
+            tp_price = last_close - tp_dist
             try:
-                fill = place_market(-1, units, stop_price)
+                fill = place_market(-1, units, stop_price, tp_price)
                 if fill:
                     log(f"ENTRY SHORT units={units}  price={fill['price']}  "
-                        f"stop={stop_price:.5f}  risk={RISK_PER_TRADE_PCT*100:.2f}%nav")
+                        f"stop={stop_price:.5f}  tp={tp_price:.5f}  "
+                        f"risk={RISK_PER_TRADE_PCT*100:.2f}%nav")
                 else:
                     log("ENTRY SHORT attempted, no fill")
             except V20Error as e:
