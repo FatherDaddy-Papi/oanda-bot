@@ -24,9 +24,37 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 client = API(access_token=os.getenv("OANDA_API_TOKEN"), environment=os.getenv("OANDA_ENV", "practice"))
 
 UNITS = 1000
-SPREAD_PIPS = 1.0
-PIP = 0.0001
 MAX_HOLD = 10
+
+# Per-instrument realistic OANDA practice spreads, sampled live (single off-peak
+# snapshot, 2026-05-26). Pip values match the broker convention used in
+# cloud_trade.PIP_MAP. Override via backtest(spread_pips=, pip=) for scenarios.
+INSTRUMENT_SPECS = {
+    "EUR_USD":    {"pip": 0.0001, "spread_pips": 1.0},
+    "GBP_USD":    {"pip": 0.0001, "spread_pips": 1.5},
+    "AUD_USD":    {"pip": 0.0001, "spread_pips": 1.5},
+    "NZD_USD":    {"pip": 0.0001, "spread_pips": 2.0},
+    "USD_CAD":    {"pip": 0.0001, "spread_pips": 1.8},
+    "USD_CHF":    {"pip": 0.0001, "spread_pips": 1.8},
+    "USD_JPY":    {"pip": 0.01,   "spread_pips": 1.2},
+    "EUR_JPY":    {"pip": 0.01,   "spread_pips": 1.8},
+    "GBP_JPY":    {"pip": 0.01,   "spread_pips": 2.4},
+    "XAU_USD":    {"pip": 0.01,   "spread_pips": 81.0},
+    "XAG_USD":    {"pip": 0.0001, "spread_pips": 348.0},
+    "NAS100_USD": {"pip": 0.1,    "spread_pips": 19.0},
+    "SPX500_USD": {"pip": 0.1,    "spread_pips": 6.0},
+    "US30_USD":   {"pip": 1.0,    "spread_pips": 3.0},
+}
+DEFAULT_PIP = 0.0001
+DEFAULT_SPREAD_PIPS = 1.0
+
+
+def specs_for(instrument):
+    """Return (pip, spread_pips) for an instrument, with defaults if unknown."""
+    s = INSTRUMENT_SPECS.get(instrument)
+    if s is None:
+        return DEFAULT_PIP, DEFAULT_SPREAD_PIPS
+    return s["pip"], s["spread_pips"]
 
 
 def fetch_candles(instrument, years, granularity):
@@ -102,8 +130,8 @@ def sma(values, period):
 
 
 def backtest(bars, rsi_period, rsi_lo, rsi_hi, sma_period, trend_sma=0, spread_pips=None, pip=None):
-    spread_pips = SPREAD_PIPS if spread_pips is None else spread_pips
-    pip = PIP if pip is None else pip
+    spread_pips = DEFAULT_SPREAD_PIPS if spread_pips is None else spread_pips
+    pip = DEFAULT_PIP if pip is None else pip
     closes = [b["c"] for b in bars]
     rs = rsi(closes, rsi_period)
     ma = sma(closes, sma_period)
@@ -197,12 +225,15 @@ def main():
     gran = sys.argv[7] if len(sys.argv) > 7 else "H1"
     trend_sma = int(sys.argv[8]) if len(sys.argv) > 8 else 0
 
+    pip, spread_pips = specs_for(instrument)
     print(f"Fetching {years}y of {instrument} {gran}...")
     bars = fetch_candles(instrument, years, gran)
     print(f"  got {len(bars)} bars  ({bars[0]['time']} -> {bars[-1]['time']})")
     filt = f", trend filter SMA({trend_sma})" if trend_sma > 0 else ""
-    print(f"Running RSI({rsi_period}) <{rsi_lo}/>{rsi_hi}, exit on SMA({sma_period}) cross, max hold {MAX_HOLD}{filt}...")
-    trades, eq, final_pos = backtest(bars, rsi_period, rsi_lo, rsi_hi, sma_period, trend_sma)
+    print(f"Running RSI({rsi_period}) <{rsi_lo}/>{rsi_hi}, exit on SMA({sma_period}) cross, max hold {MAX_HOLD}{filt}")
+    print(f"Slippage: spread={spread_pips} pips, pip={pip}")
+    trades, eq, final_pos = backtest(bars, rsi_period, rsi_lo, rsi_hi, sma_period, trend_sma,
+                                     spread_pips=spread_pips, pip=pip)
     s = stats(trades, eq)
     print()
     print("=" * 60)
