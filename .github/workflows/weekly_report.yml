@@ -1,0 +1,52 @@
+name: Weekly Journal
+
+on:
+  schedule:
+    # Monday 00:30 UTC — just after the ISO week rollover. "Last completed
+    # week" is now unambiguous (it's the Mon-Sun that just ended).
+    - cron: '30 0 * * 1'
+  workflow_dispatch:
+    inputs:
+      iso_week:
+        description: 'ISO week (e.g. 2026-W21). Blank = last completed week.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install deps
+        run: pip install --quiet oandapyV20 requests six python-dotenv
+
+      - name: Generate weekly report
+        env:
+          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
+          OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+          OANDA_ENV: practice
+        run: python weekly_report.py ${{ github.event.inputs.iso_week }}
+
+      - name: Commit and push journal
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add journal/
+          if git diff --cached --quiet; then
+            echo "No journal changes to commit."
+          else
+            git commit -m "Weekly journal: $(ls -t journal/*.md | head -1 | xargs basename .md)"
+            git push
+          fi
