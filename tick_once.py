@@ -45,21 +45,21 @@ PIP_MAP = {
 }
 PIP = PIP_MAP.get(INSTRUMENT, 0.0001)
 
-# Strategy params (M15 timeframe -- changed from H1 on 2026-05-26)
-# Note: this is exploratory on a non-edge strategy. M15 backtest shows
-# PF 0.92 on EUR_USD with realistic spread -- expected to bleed slowly.
-# Risk gate caps the damage. NOT on the path to real money.
-GRAN = "M15"
+# Strategy params (M5 timeframe -- changed from M15 on 2026-05-26).
+# Exploratory, NOT on the gated path to real money. Expected to bleed
+# slowly (M5 friction is even worse than M15). Risk gate caps damage.
+# Repo made public to free up GitHub Actions minutes for this frequency.
+GRAN = "M5"
 RSI_PERIOD = 2
 RSI_LO = 10
 RSI_HI = 90
 SMA_EXIT = 5
-SMA_TREND = 800              # 800 M15 bars ~ 200 hours ~ 8 trading days (H1 equivalent)
-MAX_HOLD_HOURS = 2.5         # = 10 M15 bars. Mean-reversion signals decay fast on M15.
+SMA_TREND = 2400             # 2400 M5 bars = 200 hours = ~8 trading days (H1 equivalent)
+MAX_HOLD_HOURS = 0.83        # = 10 M5 bars = 50 min. Mean-reversion decays fast.
 ATR_PERIOD = 14
 STOP_ATR_MULTIPLE = 2.0
-RISK_PER_TRADE_PCT = 0.0010  # 0.10% per trade -- quartered from H1's 0.25% to
-                              # compensate for ~5x trade frequency on M15
+RISK_PER_TRADE_PCT = 0.0005  # 0.05% per trade -- halved from M15's 0.10% to
+                              # compensate for ~3x trade frequency on M5
 BOT_TAG = f"rsi-bot-{INSTRUMENT}"
 UNITS_CAP = 50000
 
@@ -105,7 +105,7 @@ def atr(bars, period=ATR_PERIOD):
 
 
 # --- broker ops ---
-def fetch_bars(n=1000):
+def fetch_bars(n=3000):
     r = InstrumentsCandles(instrument=INSTRUMENT, params={"granularity": GRAN, "count": n, "price": "M"})
     client.request(r)
     cs = [c for c in r.response["candles"] if c.get("complete")]
@@ -134,14 +134,14 @@ def get_nav():
 
 
 def market_is_open(bars):
-    """Market is open if the most recent bar closed within the last hour.
-    On M15 (15-min bars), a healthy market means a new bar every 15min;
-    if the latest is >60min old we're either closed or there's an outage."""
+    """Market is open if the most recent bar closed within the last 30 min.
+    On M5, healthy market = new bar every 5 min; if latest is >30min old
+    we're closed or there's an outage."""
     if not bars:
         return False
     last = datetime.fromisoformat(bars[-1]["time"].replace("Z", "+00:00"))
     age = (datetime.now(timezone.utc) - last).total_seconds()
-    return age < 60 * 60
+    return age < 30 * 60
 
 
 def place_market(side, units_abs, stop_price):
@@ -179,7 +179,7 @@ def hours_since(iso_ts):
 
 # --- main ---
 def main():
-    bars = fetch_bars(1000)
+    bars = fetch_bars(3000)
     if not market_is_open(bars):
         log("Market closed. Skipping.")
         return

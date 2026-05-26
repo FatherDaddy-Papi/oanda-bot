@@ -2,11 +2,11 @@ name: RSI Bot
 
 on:
   schedule:
-    # Every 15 min at :05/:20/:35/:50 -- a few min after each M15 candle closes
-    # at :00/:15/:30/:45 UTC. GitHub cron is best-effort with 5-15 min lag,
-    # so some runs will see a slightly-stale bar; the bot tolerates that
-    # (idempotent: same bar evaluated twice produces the same decision).
-    - cron: '5,20,35,50 * * * *'
+    # Every 5 min on M5 timeframe. GitHub cron has 5-15 min lag in practice,
+    # so some runs will see a slightly-stale bar and some will be skipped
+    # by GitHub under load; the bot tolerates both (idempotent on the same bar).
+    # Free Actions minutes for public repos -- no billing impact at this rate.
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 # Don't kick off a second run if the previous one is still going (shouldn't happen but safety net).
@@ -21,13 +21,12 @@ jobs:
     strategy:
       fail-fast: false  # if one instrument errors, the others still run
       matrix:
-        # Expanded matrix 2026-05-26 alongside M15 timeframe switch.
-        # XAU_USD and XAG_USD still excluded (slippage >> edge for any
-        # mean-reverter; see compare_slippage.py). Cross-section now spans
-        # majors, crosses, commodity currencies, JPY pairs, and indices.
-        instrument: [EUR_USD, GBP_USD, AUD_USD, NZD_USD, USD_CAD, USD_CHF,
-                     USD_JPY, EUR_JPY, GBP_JPY,
-                     NAS100_USD, SPX500_USD]
+        # 8 lowest-spread FX instruments for M5 deployment 2026-05-26.
+        # Pure FX (no indices) because M5 + index = weekend/overnight gaps
+        # that break mean-reversion exit logic. NZD_USD dropped (worst FX
+        # spread); XAU/XAG remain excluded (spread >> edge).
+        instrument: [EUR_USD, USD_JPY, GBP_USD, AUD_USD,
+                     USD_CAD, USD_CHF, EUR_JPY, GBP_JPY]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
