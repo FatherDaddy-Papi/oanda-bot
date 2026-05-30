@@ -1,0 +1,38 @@
+name: Signal Harness (Nasdaq/Oil/BTC/Gold)
+
+on:
+  schedule:
+    # 21:15 UTC Mon-Fri: shortly after the OANDA daily candle closes (17:00 ET / 21:00 UTC),
+    # so the fresh completed D1 bar exists. GitHub cron lags 5-15 min in practice; the
+    # executor is a daily rebalance and tolerates a slightly late run.
+    - cron: '15 21 * * 1-5'
+  workflow_dispatch:
+
+# Never overlap with a previous run.
+concurrency:
+  group: signal-harness
+  cancel-in-progress: false
+
+jobs:
+  rebalance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install deps
+        run: pip install --quiet oandapyV20 pandas numpy python-dotenv
+
+      - name: Rebalance Nasdaq / Oil / BTC / Gold (practice)
+        env:
+          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
+          OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+          OANDA_ENV: practice
+        run: python oanda_trade.py --live
