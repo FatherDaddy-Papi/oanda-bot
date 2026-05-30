@@ -71,6 +71,45 @@ SIGNAL_PARAMS = {
     "donchian": 20, "momentum": 90, "atr": 14,
 }
 
+# Gate 11 -- correlation cap. Positively-correlated instruments where holding both
+# the same direction doubles one bet. Same-direction NOTIONAL within a group is
+# capped at GROUP_GROSS_CAP_PCT of NAV. Singletons have no correlated sibling.
+# Relies on the harness matrix running sequentially (max-parallel: 1) so each
+# market sees its siblings' freshly-updated positions.
+CORRELATION_GROUPS = {
+    "risk_on": ["NAS100_USD", "BTC_USD"],   # US equity index + crypto
+    "metals":  ["XAU_USD"],
+    "energy":  ["WTICO_USD"],
+}
+GROUP_GROSS_CAP_PCT = 25.0   # max same-direction notional per correlation group, % of NAV
+
+
+def group_members(inst):
+    """Instruments in inst's correlation group (including inst itself)."""
+    for members in CORRELATION_GROUPS.values():
+        if inst in members:
+            return members
+    return [inst]
+
+
+def apply_group_cap(target_units, ref_price, nav, sibling_same_dir_notional):
+    """Scale target_units so the group's same-direction notional stays within
+    GROUP_GROSS_CAP_PCT of NAV. Returns (capped_units, bound: bool).
+
+    Pure function: build_plan computes sibling_same_dir_notional from live
+    positions/prices and passes it in; the unit test exercises this directly.
+    """
+    if target_units == 0:
+        return 0.0, False
+    cap_notional = nav * (GROUP_GROSS_CAP_PCT / 100.0)
+    allowed = cap_notional - sibling_same_dir_notional
+    tgt_notional = abs(target_units) * ref_price
+    if allowed <= 0:
+        return 0.0, True
+    if tgt_notional <= allowed:
+        return target_units, False
+    return target_units * (allowed / tgt_notional), True
+
 
 def make_client():
     # Local runs read the OANDA project's .env; CI injects the same vars as secrets.
@@ -144,8 +183,10 @@ def units_str(u):
 def build_plan(client, acc, markets):
     nav, margin_avail, ccy = account_state(client, acc)
     insts = [MARKETS[m] for m in markets]
-    specs, px = specs_and_prices(client, acc, insts)
-    pos = current_positions(client, acc, insts)
+    # Also fetch group siblings so existing correlated exposure can be valued.
+    needed = sorted(set(insts) | {s for inst in insts for s in group_members(inst)})
+    specs, px = specs_and_prices(client, acc, needed)
+    pos = current_positions(client, acc, needed)
     # Per-instrument margin cap (total budget / 4) so the cap behaves the same
     # whether this process handles one market or all four (matrix-safe).
     per_inst_cap = nav * (MAX_TOTAL_MARGIN_PCT / 100.0) / len(MARKETS)
@@ -156,7 +197,7 @@ def build_plan(client, acc, markets):
         s = sig.compute(market, fetch_candles(client, inst), SIGNAL_PARAMS)
         ref = price["ask"] if s.direction == "LONG" else price["bid"]
 
-        target, stop_price = 0.0, None
+        target, stop_price, cap_note = 0.0, None, ""
         if s.direction != "FLAT" and s.atr > 0:
             risk_cash = nav * (RISK_PER_TRADE_PCT / 100.0) * abs(s.composite)
             stop_dist = ATR_STOP_MULT * s.atr
@@ -169,11 +210,29 @@ def build_plan(client, acc, markets):
             margin = abs(target) * ref * float(spec["marginRate"])
             if margin > per_inst_cap and margin > 0:
                 target = round_units(target * (per_inst_cap / margin), spec)
-                stop_price = (ref - stop_dist) if target > 0 else (ref + stop_dist)
+
+            # Correlation cap: sum siblings' SAME-direction notional, then bound.
+            sib_notional = 0.0
+            for sib in group_members(inst):
+                if sib == inst:
+                    continue
+                sp = pos.get(sib, 0.0)
+                if sp != 0.0 and (sp > 0) == (target > 0) and sib in px:
+                    sib_notional += abs(sp) * px[sib]["ask"]
+            capped, bound = apply_group_cap(target, ref, nav, sib_notional)
+            if bound:
+                target = round_units(capped, spec)
+                budget = nav * GROUP_GROSS_CAP_PCT / 100.0
+                cap_note = (f"corr-cap: group same-dir notional {sib_notional:,.0f} "
+                            f"of {budget:,.0f} budget")
+
+            stop_price = None if abs(target) < 1e-9 else (
+                (ref - stop_dist) if target > 0 else (ref + stop_dist))
 
         plan.append({"market": market, "inst": inst, "signal": s, "ref": ref,
                      "tradeable": price["tradeable"], "current": pos[inst],
                      "target": target, "stop": stop_price, "spec": spec,
+                     "cap_note": cap_note,
                      "margin": abs(target) * ref * float(spec["marginRate"])})
 
     # Decide the action for each instrument
@@ -249,6 +308,8 @@ def main():
         ok = "open" if p["tradeable"] else "CLOSED"
         print(f"  {p['market']:<8} {p['inst']:<12} {s.direction:<6} {s.composite:+.2f}  "
               f"{p['current']:<13,.4f} {p['target']:<13,.4f} {stop:<12} {p['action']:<7} {ok}")
+        if p.get("cap_note"):
+            print(f"      ~ {p['cap_note']}")
 
     todo = [p for p in plan if p["action"] in ("OPEN", "CLOSE", "RESET")]
     actionable = [p for p in todo if p["tradeable"]]

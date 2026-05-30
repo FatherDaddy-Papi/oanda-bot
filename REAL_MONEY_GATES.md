@@ -100,9 +100,11 @@ Risk per trade is computed as a percentage of current NAV at the moment of the t
 ### Gate 11 — Correlation cap
 The bot will not open multiple positions in the same direction across highly correlated instruments (e.g., XAU + XAG both long = doubled metals exposure). A correlation group cap limits total simultaneous exposure within a group.
 
-**Status: ❌ FAIL**
-- Not implemented. Was never needed during the strategy-validity phase, but is mandatory before real money.
-- Suggested groups: {XAU, XAG} metals · {NAS100, SPX500, US30} US equity · {EUR_USD, GBP_USD, AUD_USD} USD-shorts · {USD_JPY, EUR_JPY, GBP_JPY} JPY-shorts.
+**Status: ⚠️ PARTIAL** (implemented for the harness 2026-05-31)
+- ✅ Implemented in `oanda_trade.py` (Nasdaq/Oil/BTC/Gold harness): `CORRELATION_GROUPS` with same-direction NOTIONAL capped per group at `GROUP_GROSS_CAP_PCT` (25% of NAV). Active group is `risk_on = {NAS100_USD, BTC_USD}`; XAU and WTICO are singletons. The harness matrix runs `max-parallel: 1` so each market sees siblings' fresh positions before sizing.
+- ✅ Pure helper `apply_group_cap` unit-tested in `test_correlation_cap.py` (empty / partial / full / over / short / zero), 8/8 pass.
+- ❌ NOT implemented for the RSI FX bot (`tick_once.py`), which is matrixed and stateless per-instrument with no cross-instrument view. The FX groups below still need a cap before that bot could go real-money.
+- Suggested groups (FX bot, still TODO): {XAU, XAG} metals · {NAS100, SPX500, US30} US equity · {EUR_USD, GBP_USD, AUD_USD} USD-shorts · {USD_JPY, EUR_JPY, GBP_JPY} JPY-shorts.
 
 ### Gate 12 — 6 months of paper trading on the exact deployed code
 The bot has run for ≥ 6 months on a paper account using the same code, same instruments, same parameters that will be used live. Net P&L is positive after all costs. No edits to the strategy during this window — only infra fixes are permitted.
@@ -123,4 +125,4 @@ The bot has run for ≥ 6 months on a paper account using the same code, same in
 
 ---
 
-_Last reviewed: 2026-05-31. Owner: project maintainer. 2026-05-26: Clenow ensemble Gate 2 PASS + Gate 3 OOS freeze (run 2026-06-23). 2026-05-31: hardening pass — Gate 6 ⚠️ strengthened (automated `test_risk_gate.py`, live kill-switch trip), Gate 9 ❌→⚠️ (`alert.yml` failure→issue notification). Gate 11 (correlation cap) still ❌ — next. No strategy params touched; freeze intact._
+_Last reviewed: 2026-05-31. Owner: project maintainer. 2026-05-26: Clenow ensemble Gate 2 PASS + Gate 3 OOS freeze (run 2026-06-23). 2026-05-31: hardening pass — Gate 6 ⚠️ strengthened (automated `test_risk_gate.py`, live kill-switch trip), Gate 9 ❌→⚠️ (`alert.yml` failure→issue notification), Gate 11 ❌→⚠️ (harness correlation cap + `test_correlation_cap.py`; FX bot still uncapped). No strategy params touched; freeze intact._

@@ -62,7 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
-      fail-fast: false  # one market erroring must not block the others
+      fail-fast: false   # one market erroring must not block the others
+      max-parallel: 1    # sequential so the correlation cap sees siblings' fresh positions
       matrix:
         market: [NASDAQ, OIL, BTC, GOLD]
     steps:
