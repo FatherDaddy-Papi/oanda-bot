@@ -27,13 +27,20 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
 
 import pandas as pd
+import requests
 from dotenv import load_dotenv
 from oandapyV20 import API
 from oandapyV20.endpoints import accounts, instruments, orders, positions, pricing
+from oandapyV20.exceptions import V20Error
 
 from harness import signals as sig
+
+# Transient upstream failures (OANDA 5xx / Cloudflare 522 / connection timeouts).
+# These are not code bugs -- retry briefly, then skip the run; the next cron retries.
+TRANSIENT_ERRORS = (V20Error, requests.exceptions.RequestException)
 
 # Shared kill switch + daily/weekly NAV loss limits, same module the RSI bot uses.
 # Present when deployed inside the oanda-bot repo; absent in the standalone project.
@@ -211,7 +218,23 @@ def main():
 
     markets = [args.market] if args.market else list(MARKETS)
     client, acc = make_client()
-    nav, margin_avail, ccy, plan = build_plan(client, acc, markets)
+
+    # Read phase, with a short retry so a brief OANDA blip doesn't fail the job.
+    # A genuine code bug raises a non-transient exception and still exits 1.
+    plan = None
+    for attempt in range(1, 4):
+        try:
+            nav, margin_avail, ccy, plan = build_plan(client, acc, markets)
+            break
+        except TRANSIENT_ERRORS as e:
+            msg = " ".join(str(e).split())[:160]
+            print(f"  OANDA API error (attempt {attempt}/3): {msg}")
+            if attempt < 3:
+                time.sleep(5)
+    if plan is None:
+        print("OANDA API unavailable after 3 attempts -- skipping this run "
+              "(no orders sent; next cron retries).")
+        return
 
     print(f"\nACCOUNT {acc} (practice)  NAV={nav:,.2f} {ccy}  marginAvail={margin_avail:,.2f}")
     print("\n  MARKET   INST         SIG    SCORE  CURRENT       TARGET        STOP         ACTION  OK?")
