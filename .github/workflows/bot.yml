@@ -72,7 +72,7 @@ jobs:
           cache: 'pip'
 
       - name: Install deps
-        run: pip install --quiet oandapyV20 pandas numpy python-dotenv
+        run: pip install --quiet oandapyV20 requests six pandas numpy python-dotenv
 
       - name: Rebalance Nasdaq / Oil / BTC / Gold (practice)
         env:
