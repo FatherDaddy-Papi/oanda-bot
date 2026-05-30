@@ -1,0 +1,16 @@
+{
+  "name": "fatherdaddy-plugins",
+  "owner": {
+    "name": "FatherDaddy-Papi"
+  },
+  "description": "Personal Claude Code plugin marketplace.",
+  "plugins": [
+    {
+      "name": "quant-analyst",
+      "source": "./plugins/quant-analyst",
+      "description": "Senior quantitative-analyst subagent: strategy development, financial modeling, backtesting, and risk analytics.",
+      "category": "finance",
+      "tags": ["quant", "trading", "backtesting", "risk"]
+    }
+  ]
+}

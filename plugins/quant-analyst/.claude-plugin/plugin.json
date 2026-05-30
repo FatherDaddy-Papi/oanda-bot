@@ -1,0 +1,12 @@
+{
+  "name": "quant-analyst",
+  "description": "Senior quantitative-analyst subagent: trading-strategy development, financial modeling, backtesting, and risk analytics. Vendored from VoltAgent/awesome-claude-code-subagents.",
+  "version": "1.0.0",
+  "author": {
+    "name": "VoltAgent (awesome-claude-code-subagents)",
+    "url": "https://github.com/VoltAgent/awesome-claude-code-subagents"
+  },
+  "homepage": "https://github.com/VoltAgent/awesome-claude-code-subagents/blob/main/categories/07-specialized-domains/quant-analyst.md",
+  "license": "MIT",
+  "keywords": ["quant", "trading", "backtesting", "risk", "finance"]
+}
