@@ -35,6 +35,13 @@ from oandapyV20.endpoints import accounts, instruments, orders, positions, prici
 
 from harness import signals as sig
 
+# Shared kill switch + daily/weekly NAV loss limits, same module the RSI bot uses.
+# Present when deployed inside the oanda-bot repo; absent in the standalone project.
+try:
+    import risk_gate
+except ImportError:
+    risk_gate = None
+
 ENV_PATH = r"C:\Users\theod\projects\oanda-paper-trading\.env"
 
 # harness market -> OANDA instrument
@@ -215,10 +222,22 @@ def main():
     actionable = [p for p in todo if p["tradeable"]]
     blocked = [p for p in todo if not p["tradeable"]]
 
+    # Pre-entry risk gate, shared with the RSI bot. Exits/closes are NEVER gated —
+    # de-risking is always allowed; only new exposure is blocked.
+    if risk_gate is None:
+        allow_entries, gate_reason = False, "risk_gate module unavailable -> entries blocked (fail-safe)"
+    else:
+        try:
+            allow_entries, gate_reason = risk_gate.check(client, acc)
+        except Exception as e:  # noqa: BLE001
+            allow_entries, gate_reason = False, f"risk gate query failed -> entries blocked: {e}"
+    print(f"\n  risk gate: {gate_reason}")
+
     if not args.live:
-        print(f"\nDRY-RUN. {len(actionable)} action(s) ready, {len(blocked)} blocked by "
-              f"closed market, {sum(p['action']=='HOLD' for p in plan)} hold. "
-              f"Re-run with --live to execute.")
+        opens = sum(p["action"] in ("OPEN", "RESET") for p in actionable)
+        print(f"\nDRY-RUN. {len(actionable)} action(s) ready ({opens} need the entry gate), "
+              f"{len(blocked)} blocked by closed market, "
+              f"{sum(p['action']=='HOLD' for p in plan)} hold. Re-run with --live to execute.")
         return
 
     if not actionable:
@@ -232,6 +251,9 @@ def main():
                 close_position(client, acc, p["inst"], p["current"])
                 print(f"  CLOSED {p['inst']} ({p['current']:+.4f} units)")
             if p["action"] in ("OPEN", "RESET"):
+                if not allow_entries:
+                    print(f"  SKIP open {p['inst']}: entries blocked by risk gate")
+                    continue
                 resp = open_to_target(client, acc, p)
                 fill = resp.get("orderFillTransaction")
                 if fill:

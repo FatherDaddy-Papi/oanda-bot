@@ -7,6 +7,9 @@ on:
     # by GitHub under load; the bot tolerates both (idempotent on the same bar).
     # Free Actions minutes for public repos -- no billing impact at this rate.
     - cron: '*/5 * * * *'
+    # Daily signal-harness rebalance: 21:15 UTC Mon-Fri, just after the OANDA
+    # daily candle closes (17:00 ET / 21:00 UTC). Same secrets, same risk gate.
+    - cron: '15 21 * * 1-5'
   workflow_dispatch:
 
 # Don't kick off a second run if the previous one is still going (shouldn't happen but safety net).
@@ -16,6 +19,9 @@ concurrency:
 
 jobs:
   trade:
+    # The 5-minute cron (or a manual dispatch) drives the M5 RSI bot. The daily
+    # harness cron must NOT trigger 8 extra FX ticks, so gate this job to its cron.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '*/5 * * * *' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
@@ -46,3 +52,31 @@ jobs:
           OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
           OANDA_ENV: practice
         run: python tick_once.py ${{ matrix.instrument }}
+
+  harness:
+    # Daily D1 trend/momentum rebalance on Nasdaq/Oil/BTC/Gold. Gated to the daily
+    # cron so the */5 trigger doesn't run it 288x/day. Routes new entries through
+    # the same risk_gate.check() the RSI bot uses (kill switch + 2%/5% NAV limits);
+    # closes are never gated.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '15 21 * * 1-5' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install deps
+        run: pip install --quiet oandapyV20 pandas numpy python-dotenv
+
+      - name: Rebalance Nasdaq / Oil / BTC / Gold (practice)
+        env:
+          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
+          OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+          OANDA_ENV: practice
+        run: python oanda_trade.py --live
