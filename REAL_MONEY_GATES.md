@@ -86,8 +86,8 @@ If the bot fails for any reason — error, network issue, OANDA outage, GitHub A
 
 **Status: ⚠️ PARTIAL** (alerting implemented 2026-05-31)
 - ✅ `.github/workflows/alert.yml`: on any failed `RSI Bot` run it opens (or comments on) a deduplicated `bot-alert` GitHub issue, which pushes email + mobile notification. Covers crashes, unhandled errors, and **sustained OANDA outages** (`oanda_trade.py` now exits non-zero after exhausting its 3 retries; transient blips stay quiet).
-- ❌ Does not yet catch *silent* halts that exit 0: a risk-gate daily/weekly limit block or kill-switch activation completes "successfully" and so raises no alert. Next: emit a sentinel on halt and alert on it.
-- ❌ Does not catch a GitHub Actions *platform* outage (no run → no `workflow_run` event). A true PASS needs an external dead-man's-switch (e.g. a scheduled external ping that alerts if the bot hasn't checked in within the hour).
+- ✅ Silent halts now covered: `.github/workflows/monitor.yml` runs `halt_check.py` **hourly**, opening a deduplicated `bot-halt` issue when the risk gate is blocking entries (kill switch or daily/weekly limit) and **auto-closing it** when the gate clears. Tested locally both states.
+- ❌ Does not catch a GitHub Actions *platform* outage (no run → no event, from either alert.yml or monitor.yml). A true PASS needs an external dead-man's-switch — a third-party scheduled ping (e.g. healthchecks.io) that alerts if the bot hasn't checked in within the hour. This is the one remaining item for Gate 9 PASS.
 
 ---
 
@@ -127,4 +127,4 @@ The bot has run for ≥ 6 months on a paper account using the same code, same in
 
 ---
 
-_Last reviewed: 2026-05-31. Owner: project maintainer. 2026-05-26: Clenow ensemble Gate 2 PASS + Gate 3 OOS freeze (run 2026-06-23). 2026-05-31: hardening pass — Gate 6 ⚠️ strengthened (automated `test_risk_gate.py`, live kill-switch trip), Gate 9 ❌→⚠️ (`alert.yml` failure→issue notification), Gate 11 ❌→⚠️ (harness correlation cap + `test_correlation_cap.py`; FX bot still uncapped), Gate 8 ❌→⚠️ (deliberate rejection test + clean V20Error handling; partial-fill N/A via FOK). No strategy params touched; freeze intact._
+_Last reviewed: 2026-05-31. Owner: project maintainer. 2026-05-26: Clenow ensemble Gate 2 PASS + Gate 3 OOS freeze (run 2026-06-23). 2026-05-31: hardening pass — Gate 6 ⚠️ strengthened (automated `test_risk_gate.py`, live kill-switch trip), Gate 9 ❌→⚠️ (`alert.yml` failure→issue notification), Gate 11 ❌→⚠️ (harness correlation cap + `test_correlation_cap.py`; FX bot still uncapped), Gate 8 ❌→⚠️ (deliberate rejection test + clean V20Error handling; partial-fill N/A via FOK), Gate 9 silent-halt monitor added (`monitor.yml` + `halt_check.py`, hourly, auto-open/close) — only the external dead-man's-switch remains for Gate 9 PASS. No strategy params touched; freeze intact._

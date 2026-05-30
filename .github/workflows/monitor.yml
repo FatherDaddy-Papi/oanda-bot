@@ -1,0 +1,72 @@
+name: Halt Monitor
+
+# Gate 9 (silent-halt coverage): a risk-gate halt (kill switch or daily/weekly
+# loss limit) stops trading but exits 0, so it raises no failure alert. This job
+# checks the live gate hourly and opens a deduplicated `bot-halt` issue when
+# trading is halted, then auto-closes it once the gate clears.
+
+on:
+  schedule:
+    - cron: '20 * * * *'   # hourly, meets the "know within 1 hour" SLA
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install deps
+        run: pip install --quiet oandapyV20 requests six python-dotenv
+
+      - name: Check halt state
+        id: check
+        env:
+          OANDA_ACCOUNT_ID: ${{ secrets.OANDA_ACCOUNT_ID }}
+          OANDA_API_TOKEN: ${{ secrets.OANDA_API_TOKEN }}
+          OANDA_ENV: practice
+        run: python halt_check.py
+
+      - name: Open or close the halt alert
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HALTED: ${{ steps.check.outputs.halted }}
+          REASON: ${{ steps.check.outputs.reason }}
+        run: |
+          set -euo pipefail
+          gh label create bot-halt --color D93F0B \
+            --description "Risk gate halt (Gate 9)" 2>/dev/null || true
+          existing=$(gh issue list --repo "$REPO" --label bot-halt --state open \
+            --json number --jq '.[0].number // empty')
+          if [ "$HALTED" = "true" ]; then
+            if [ -n "$existing" ]; then
+              echo "Halt issue #$existing already open; leaving it."
+            else
+              gh issue create --repo "$REPO" --label bot-halt \
+                --title "Trading halted by risk gate" \
+                --body "The risk gate is blocking entries: $REASON
+
+          Automated (Gate 9 silent-halt monitor). Auto-closes when the gate clears."
+              echo "Opened halt issue."
+            fi
+          else
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --repo "$REPO" --body "Gate cleared: $REASON. Auto-closing."
+              gh issue close "$existing" --repo "$REPO"
+              echo "Closed halt issue #$existing."
+            else
+              echo "Healthy, no open halt issue. Nothing to do."
+            fi
+          fi
