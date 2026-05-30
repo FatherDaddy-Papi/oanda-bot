@@ -75,9 +75,11 @@ The bot can be killed at any moment, redeployed, and resume correctly. No local 
 ### Gate 8 — Order rejection / partial fill handling
 The bot has been deliberately given an order that will be rejected by the broker (insufficient margin, market closed, invalid price), and verified it logs cleanly, does not silently retry, does not create a phantom position in local state.
 
-**Status: ❌ FAIL**
-- Current code catches `V20Error` and logs, but no deliberate rejection test has been run end-to-end on the cloud bot.
-- Also: market-closed path is handled (`market_is_open`), but margin-rejection and FOK-not-filled paths are not exercised.
+**Status: ⚠️ PARTIAL** (harness covered 2026-05-31)
+- ✅ Deliberate rejection run on the practice account via `test_order_rejection.py`: a market FOK order with units far over the instrument max was rejected (`UNITS_LIMIT_EXCEEDED`); verified **no fill, reason returned, no phantom position** (3/3). Re-runnable any time (weekends additionally yield `MARKET_HALTED`).
+- ✅ Finding fixed: OANDA returns hard rejections as HTTP 4xx, so `oandapyV20` *raises* `V20Error` rather than returning a cancel transaction. `oanda_trade.py` now catches `V20Error` specifically and logs `REJECTED <inst>: <reason> (no fill, no retry)` instead of a generic error dump.
+- 🟦 Partial fills are **N/A**: every bot order is `timeInForce: FOK` (fill-or-kill), so an order fills in full or is killed — there is no partial-fill state to handle.
+- ❌ The RSI FX bot (`tick_once.py`) catches `V20Error` in code but has not had a deliberate rejection trip run against it; do that before that bot goes real-money.
 
 ### Gate 9 — Monitoring and alerting
 If the bot fails for any reason — error, network issue, OANDA outage, GitHub Actions outage — you will know within 1 hour. You do not have to remember to check.
@@ -125,4 +127,4 @@ The bot has run for ≥ 6 months on a paper account using the same code, same in
 
 ---
 
-_Last reviewed: 2026-05-31. Owner: project maintainer. 2026-05-26: Clenow ensemble Gate 2 PASS + Gate 3 OOS freeze (run 2026-06-23). 2026-05-31: hardening pass — Gate 6 ⚠️ strengthened (automated `test_risk_gate.py`, live kill-switch trip), Gate 9 ❌→⚠️ (`alert.yml` failure→issue notification), Gate 11 ❌→⚠️ (harness correlation cap + `test_correlation_cap.py`; FX bot still uncapped). No strategy params touched; freeze intact._
+_Last reviewed: 2026-05-31. Owner: project maintainer. 2026-05-26: Clenow ensemble Gate 2 PASS + Gate 3 OOS freeze (run 2026-06-23). 2026-05-31: hardening pass — Gate 6 ⚠️ strengthened (automated `test_risk_gate.py`, live kill-switch trip), Gate 9 ❌→⚠️ (`alert.yml` failure→issue notification), Gate 11 ❌→⚠️ (harness correlation cap + `test_correlation_cap.py`; FX bot still uncapped), Gate 8 ❌→⚠️ (deliberate rejection test + clean V20Error handling; partial-fill N/A via FOK). No strategy params touched; freeze intact._

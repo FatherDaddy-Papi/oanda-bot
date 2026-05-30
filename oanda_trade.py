@@ -26,6 +26,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -178,6 +179,18 @@ def round_price(price, spec):
 
 def units_str(u):
     return str(int(u)) if float(u).is_integer() else str(u)
+
+
+def reject_reason(exc):
+    """Pull a concise rejection reason out of a V20Error's JSON body."""
+    try:
+        d = json.loads(str(exc))
+    except Exception:  # noqa: BLE001
+        return str(exc)[:120]
+    return (d.get("errorCode")
+            or d.get("orderRejectTransaction", {}).get("rejectReason")
+            or d.get("orderCancelTransaction", {}).get("reason")
+            or "rejected")
 
 
 def build_plan(client, acc, markets):
@@ -355,8 +368,12 @@ def main():
                 else:
                     reason = resp.get("orderCancelTransaction", {}).get("reason", "see response")
                     print(f"  NOT FILLED {p['inst']}: {reason}")
+        except V20Error as ve:
+            # Hard broker rejection (4xx): log the reason cleanly and move on.
+            # No retry, no phantom position -- this run simply skips the instrument.
+            print(f"  REJECTED {p['inst']}: {reject_reason(ve)} (no fill, no retry)")
         except Exception as exc:  # noqa: BLE001
-            print(f"  ! {p['inst']} error: {exc}")
+            print(f"  ! {p['inst']} unexpected error: {exc}")
 
 
 if __name__ == "__main__":
