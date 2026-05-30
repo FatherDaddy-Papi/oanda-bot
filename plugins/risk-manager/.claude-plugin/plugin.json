@@ -1,0 +1,12 @@
+{
+  "name": "risk-manager",
+  "description": "Risk-management subagent: identify, quantify, and mitigate financial/operational/regulatory risk; control frameworks, risk-model validation, exposure assessment. Vendored from VoltAgent/awesome-claude-code-subagents.",
+  "version": "1.0.0",
+  "author": {
+    "name": "VoltAgent (awesome-claude-code-subagents)",
+    "url": "https://github.com/VoltAgent/awesome-claude-code-subagents"
+  },
+  "homepage": "https://github.com/VoltAgent/awesome-claude-code-subagents/blob/main/categories/07-specialized-domains/risk-manager.md",
+  "license": "MIT",
+  "keywords": ["risk", "controls", "compliance", "finance"]
+}

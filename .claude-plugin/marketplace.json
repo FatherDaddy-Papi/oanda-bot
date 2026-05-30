@@ -11,6 +11,20 @@
       "description": "Senior quantitative-analyst subagent: strategy development, financial modeling, backtesting, and risk analytics.",
       "category": "finance",
       "tags": ["quant", "trading", "backtesting", "risk"]
+    },
+    {
+      "name": "risk-manager",
+      "source": "./plugins/risk-manager",
+      "description": "Risk-management subagent: exposure assessment, control frameworks, risk-model validation, regulatory compliance.",
+      "category": "finance",
+      "tags": ["risk", "controls", "compliance"]
+    },
+    {
+      "name": "data-engineer",
+      "source": "./plugins/data-engineer",
+      "description": "Data-engineering subagent: data pipelines, ETL/ELT, orchestration, data quality, and cost optimization.",
+      "category": "data",
+      "tags": ["data", "etl", "pipelines"]
     }
   ]
 }

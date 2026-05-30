@@ -1,0 +1,12 @@
+{
+  "name": "data-engineer",
+  "description": "Data-engineering subagent: design and optimize data pipelines, ETL/ELT, orchestration, data quality, and processing cost. Vendored from VoltAgent/awesome-claude-code-subagents.",
+  "version": "1.0.0",
+  "author": {
+    "name": "VoltAgent (awesome-claude-code-subagents)",
+    "url": "https://github.com/VoltAgent/awesome-claude-code-subagents"
+  },
+  "homepage": "https://github.com/VoltAgent/awesome-claude-code-subagents/blob/main/categories/05-data-ai/data-engineer.md",
+  "license": "MIT",
+  "keywords": ["data", "etl", "pipelines", "infrastructure"]
+}
