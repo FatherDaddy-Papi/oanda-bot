@@ -60,10 +60,11 @@ Backtest has ≥ 200 completed trades per instrument over the test window. Below
 ### Gate 6 — Tested loss limits and kill switch
 Daily and weekly loss limits exist in code AND have been deliberately tripped at least once to verify they actually block entries. Kill switch has been flipped on and off with a real bar passing through both states.
 
-**Status: ⚠️ PARTIAL**
+**Status: ⚠️ PARTIAL** (stronger evidence as of 2026-05-31)
 - ✅ `risk_gate.py` implements daily (-2% NAV) and weekly (-5% NAV) limits + kill switch via `RISK_HALT.txt`.
-- ✅ Unit-tested locally: kill switch path verified, NAV-relative limit math verified.
-- ❌ Not yet tripped in a real running cron. Before real money: deliberately set a limit to a level the bot will breach within hours, confirm entries actually stop, then restore.
+- ✅ Automated test suite `test_risk_gate.py` covers all four branches deterministically (allow / daily-limit / weekly-limit / kill-switch on→off), date-independent via injected P&L. Run in CI-able form; 6/6 pass.
+- ✅ Live integration confirmed: the shared gate runs in the cloud harness (RSI Bot run #24 logged `risk gate: OK day P/L ... week ...`), and a local kill-switch trip flipped the harness decision path to `risk gate: KILL SWITCH active` then back to `OK` on removal.
+- ❌ Not yet tripped in a real running cron *during market hours with a pending entry signal*. Before real money: set a limit to a level the bot breaches within hours, confirm a would-be entry is actually blocked in the live cron log, then restore. (Kept PARTIAL deliberately — the logic and kill-switch read are proven; the one remaining item is the live market-hours trip.)
 
 ### Gate 7 — Restart safety
 The bot can be killed at any moment, redeployed, and resume correctly. No local state file is needed for correctness; position state is reconstructed from the broker.
@@ -81,9 +82,10 @@ The bot has been deliberately given an order that will be rejected by the broker
 ### Gate 9 — Monitoring and alerting
 If the bot fails for any reason — error, network issue, OANDA outage, GitHub Actions outage — you will know within 1 hour. You do not have to remember to check.
 
-**Status: ❌ FAIL**
-- Currently relies on manually opening the Actions UI. No push alert on workflow failure.
-- Minimum acceptable: GitHub Actions failure notification → email or webhook → phone notification.
+**Status: ⚠️ PARTIAL** (alerting implemented 2026-05-31)
+- ✅ `.github/workflows/alert.yml`: on any failed `RSI Bot` run it opens (or comments on) a deduplicated `bot-alert` GitHub issue, which pushes email + mobile notification. Covers crashes, unhandled errors, and **sustained OANDA outages** (`oanda_trade.py` now exits non-zero after exhausting its 3 retries; transient blips stay quiet).
+- ❌ Does not yet catch *silent* halts that exit 0: a risk-gate daily/weekly limit block or kill-switch activation completes "successfully" and so raises no alert. Next: emit a sentinel on halt and alert on it.
+- ❌ Does not catch a GitHub Actions *platform* outage (no run → no `workflow_run` event). A true PASS needs an external dead-man's-switch (e.g. a scheduled external ping that alerts if the bot hasn't checked in within the hour).
 
 ---
 
@@ -121,4 +123,4 @@ The bot has run for ≥ 6 months on a paper account using the same code, same in
 
 ---
 
-_Last reviewed: 2026-05-26. Owner: project maintainer. Updated with Clenow ensemble Gate 2 PASS (commit pending) and Gate 3 OOS freeze (run scheduled 2026-06-23). All gates besides Gate 2 unchanged from prior review._
+_Last reviewed: 2026-05-31. Owner: project maintainer. 2026-05-26: Clenow ensemble Gate 2 PASS + Gate 3 OOS freeze (run 2026-06-23). 2026-05-31: hardening pass — Gate 6 ⚠️ strengthened (automated `test_risk_gate.py`, live kill-switch trip), Gate 9 ❌→⚠️ (`alert.yml` failure→issue notification). Gate 11 (correlation cap) still ❌ — next. No strategy params touched; freeze intact._

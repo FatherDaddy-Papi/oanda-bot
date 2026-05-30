@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import time
 
 import pandas as pd
@@ -232,9 +233,12 @@ def main():
             if attempt < 3:
                 time.sleep(5)
     if plan is None:
-        print("OANDA API unavailable after 3 attempts -- skipping this run "
-              "(no orders sent; next cron retries).")
-        return
+        # Transient blips are absorbed by the 3 retries above; reaching here means a
+        # sustained outage. Exit non-zero so the Bot Alert workflow (Gate 9) notifies.
+        # No orders were sent.
+        print("OANDA API unavailable after 3 attempts (sustained outage) -- "
+              "failing to trigger the alert; no orders were sent.")
+        sys.exit(1)
 
     print(f"\nACCOUNT {acc} (practice)  NAV={nav:,.2f} {ccy}  marginAvail={margin_avail:,.2f}")
     print("\n  MARKET   INST         SIG    SCORE  CURRENT       TARGET        STOP         ACTION  OK?")

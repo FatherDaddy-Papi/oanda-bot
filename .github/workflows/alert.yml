@@ -1,0 +1,48 @@
+name: Bot Alert
+
+# Gate 9 (monitoring & alerting): when the RSI Bot workflow finishes in a failed
+# state -- a crash, an unhandled error, or a sustained OANDA outage (oanda_trade.py
+# exits non-zero after exhausting its retries) -- open a GitHub issue. GitHub then
+# notifies the repo owner by email and mobile push, so a failure surfaces within
+# minutes without anyone watching the Actions tab.
+
+on:
+  workflow_run:
+    workflows: ["RSI Bot"]
+    types: [completed]
+
+permissions:
+  issues: write
+
+jobs:
+  alert:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open a deduplicated alert issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_TIME: ${{ github.event.workflow_run.updated_at }}
+        run: |
+          set -euo pipefail
+          # One open alert at a time: if a bot-alert issue is already open, comment
+          # on it instead of spawning a new one every 5 minutes.
+          gh label create bot-alert --color B60205 \
+            --description "Automated bot failure alert (Gate 9)" 2>/dev/null || true
+          existing=$(gh issue list --repo "$REPO" --label bot-alert --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" \
+              --body "Another failed run: [$RUN_NAME]($RUN_URL) at $RUN_TIME."
+            echo "Commented on existing alert issue #$existing"
+          else
+            gh issue create --repo "$REPO" --label bot-alert \
+              --title "⚠️ $RUN_NAME run failed" \
+              --body "A scheduled run failed: [$RUN_NAME]($RUN_URL) at $RUN_TIME.
+
+          Automated alert (Gate 9). Close this issue once resolved — it re-opens on the next failure."
+            echo "Opened new alert issue"
+          fi
