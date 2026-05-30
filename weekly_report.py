@@ -47,6 +47,23 @@ def parse_t(ts):
         return None
 
 
+# Manual journal notes live between these markers and are preserved verbatim when
+# this script regenerates the file from trade data. Everything outside is auto-generated.
+MANUAL_START = "<!-- BUILD-LOG:START -->"
+MANUAL_END = "<!-- BUILD-LOG:END -->"
+
+
+def extract_manual(path):
+    """Return the manual notes block (markers included) from an existing file, or ''."""
+    if not os.path.exists(path):
+        return ""
+    text = open(path, encoding="utf-8").read()
+    i, j = text.find(MANUAL_START), text.find(MANUAL_END)
+    if i != -1 and j != -1 and j > i:
+        return text[i:j + len(MANUAL_END)]
+    return ""
+
+
 def fetch_closed_in_window(client, account_id, start, end):
     r = trades_ep.TradesList(accountID=account_id,
                              params={"state": "CLOSED", "count": 500})
@@ -181,9 +198,16 @@ def main():
     journal_dir = os.path.join(os.path.dirname(__file__), "journal")
     os.makedirs(journal_dir, exist_ok=True)
     out_path = os.path.join(journal_dir, f"{label}.md")
+
+    # Preserve any hand-written notes from a prior version of this week's file.
+    manual = extract_manual(out_path)
+    if manual:
+        body = body + "\n" + manual + "\n"
+
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(body)
-    print(f"Wrote {out_path}  ({len(trades)} closed trades, {len(opens)} open)")
+    print(f"Wrote {out_path}  ({len(trades)} closed trades, {len(opens)} open"
+          f"{', manual notes preserved' if manual else ''})")
 
 
 if __name__ == "__main__":
