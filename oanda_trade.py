@@ -97,11 +97,11 @@ def account_state(client, acc):
     return float(a["NAV"]), float(a["marginAvailable"]), a["currency"]
 
 
-def specs_and_prices(client, acc):
+def specs_and_prices(client, acc, insts):
     ai = accounts.AccountInstruments(accountID=acc)
     client.request(ai)
     specs = {i["name"]: i for i in ai.response["instruments"]}
-    pr = pricing.PricingInfo(accountID=acc, params={"instruments": ",".join(MARKETS.values())})
+    pr = pricing.PricingInfo(accountID=acc, params={"instruments": ",".join(insts)})
     client.request(pr)
     px = {p["instrument"]: {"bid": float(p["bids"][0]["price"]),
                             "ask": float(p["asks"][0]["price"]),
@@ -110,14 +110,14 @@ def specs_and_prices(client, acc):
     return specs, px
 
 
-def current_positions(client, acc) -> dict[str, float]:
+def current_positions(client, acc, insts) -> dict[str, float]:
     r = positions.OpenPositions(accountID=acc)
     client.request(r)
     out = {}
     for p in r.response["positions"]:
         net = float(p["long"]["units"]) + float(p["short"]["units"])
         out[p["instrument"]] = net
-    return {inst: out.get(inst, 0.0) for inst in MARKETS.values()}
+    return {inst: out.get(inst, 0.0) for inst in insts}
 
 
 def round_units(units, spec):
@@ -133,12 +133,17 @@ def units_str(u):
     return str(int(u)) if float(u).is_integer() else str(u)
 
 
-def build_plan(client, acc):
+def build_plan(client, acc, markets):
     nav, margin_avail, ccy = account_state(client, acc)
-    specs, px = specs_and_prices(client, acc)
-    pos = current_positions(client, acc)
+    insts = [MARKETS[m] for m in markets]
+    specs, px = specs_and_prices(client, acc, insts)
+    pos = current_positions(client, acc, insts)
+    # Per-instrument margin cap (total budget / 4) so the cap behaves the same
+    # whether this process handles one market or all four (matrix-safe).
+    per_inst_cap = nav * (MAX_TOTAL_MARGIN_PCT / 100.0) / len(MARKETS)
     plan = []
-    for market, inst in MARKETS.items():
+    for market in markets:
+        inst = MARKETS[market]
         spec, price = specs[inst], px[inst]
         s = sig.compute(market, fetch_candles(client, inst), SIGNAL_PARAMS)
         ref = price["ask"] if s.direction == "LONG" else price["bid"]
@@ -152,19 +157,16 @@ def build_plan(client, acc):
                 target = -target
             stop_price = (ref - stop_dist) if s.direction == "LONG" else (ref + stop_dist)
 
+            # Cap this instrument's margin individually.
+            margin = abs(target) * ref * float(spec["marginRate"])
+            if margin > per_inst_cap and margin > 0:
+                target = round_units(target * (per_inst_cap / margin), spec)
+                stop_price = (ref - stop_dist) if target > 0 else (ref + stop_dist)
+
         plan.append({"market": market, "inst": inst, "signal": s, "ref": ref,
                      "tradeable": price["tradeable"], "current": pos[inst],
                      "target": target, "stop": stop_price, "spec": spec,
                      "margin": abs(target) * ref * float(spec["marginRate"])})
-
-    # Margin cap across the four
-    total = sum(p["margin"] for p in plan)
-    cap = nav * (MAX_TOTAL_MARGIN_PCT / 100.0)
-    if total > cap and total > 0:
-        scale = cap / total
-        for p in plan:
-            p["target"] = round_units(p["target"] * scale, p["spec"])
-            p["margin"] = abs(p["target"]) * p["ref"] * float(p["spec"]["marginRate"])
 
     # Decide the action for each instrument
     for p in plan:
@@ -202,11 +204,14 @@ def open_to_target(client, acc, p):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("market", nargs="?", choices=list(MARKETS),
+                    help="single market to handle (default: all four)")
     ap.add_argument("--live", action="store_true", help="actually place/modify orders")
     args = ap.parse_args()
 
+    markets = [args.market] if args.market else list(MARKETS)
     client, acc = make_client()
-    nav, margin_avail, ccy, plan = build_plan(client, acc)
+    nav, margin_avail, ccy, plan = build_plan(client, acc, markets)
 
     print(f"\nACCOUNT {acc} (practice)  NAV={nav:,.2f} {ccy}  marginAvail={margin_avail:,.2f}")
     print("\n  MARKET   INST         SIG    SCORE  CURRENT       TARGET        STOP         ACTION  OK?")
