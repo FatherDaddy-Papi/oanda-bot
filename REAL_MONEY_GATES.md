@@ -26,8 +26,8 @@ The strategy's Deflated Sharpe Ratio (Bailey & López de Prado 2014), computed o
 - **RSI(2)+SMA H1:** ❌ FAIL. DSR 0.36 / 0.52 / 0.51 across EUR_USD / NAS100_USD / GBP_JPY. See `deflated_sharpe.py`.
 - **Donchian H1:** ❌ FAIL. DSR 0.17 / 0.50 / 0.08 across same set. Two of three best configs have *negative* Sharpe. See `donchian_dsr.py`.
 - **Clenow-shaped D1 single-best:** ⚠️ MIXED. DSR 0.962 (clears) but PBO 0.838 (fails — flat parameter surface, in-sample best lands OOS-bottom 84% of splits). Equivalent to fail. See `clenow_dsr.py`.
-- **Clenow-shaped D1 ensemble (lookback averaged across {60,90,120,180}):** ✅ **PASS**. DSR 0.985, PBO 0.398, split-half halves within 0.07 Sharpe. Sharpe ann ~1.39 default, ~1.56 best. See `clenow_ensemble.py`.
-- The PASS applies *only* to the Clenow ensemble strategy. Deploying any other strategy resets this gate.
+- **Clenow-shaped D1 ensemble (lookback averaged across {60,90,120,180}):** ⚠️ **WITHDRAWN** (was ✅ PASS 2026-05-26). In-sample DSR 0.985 / PBO 0.398 / split-half 0.07 looked clean, but the OOS test (Gate 3, 2026-06-30) failed and `clenow_diagnose.py` traced the cause: the in-sample "edge" was partly **concentrated US-equity beta** (vol-parity loads the book into correlated low-ATR indices — >80% in 3 of 5 OOS weeks). The DSR/PBO machinery never saw this because both split-halves sat inside the same equity bull run. **Lesson: DSR/PBO certify against parameter overfitting but NOT against cross-sectional concentration. A correlation cap (Gate 11) must be a precondition, not an afterthought.** Any Clenow V2 needs the cap built in AND a fresh full gate run from scratch.
+- No strategy currently holds a clean Gate 2 pass. **SHELVED.**
 
 ### Gate 3 — Out-of-sample validation
 Strategy parameters are frozen on data up to date X. Performance is then measured on data strictly after X, untouched during development. Profit factor degradation from in-sample to out-of-sample is < 30%.
@@ -113,6 +113,7 @@ The bot will not open multiple positions in the same direction across highly cor
 - ✅ Implemented in `oanda_trade.py` (Nasdaq/Oil/BTC/Gold harness): `CORRELATION_GROUPS` with same-direction NOTIONAL capped per group at `GROUP_GROSS_CAP_PCT` (25% of NAV). Active group is `risk_on = {NAS100_USD, BTC_USD}`; XAU and WTICO are singletons. The harness matrix runs `max-parallel: 1` so each market sees siblings' fresh positions before sizing.
 - ✅ Pure helper `apply_group_cap` unit-tested in `test_correlation_cap.py` (empty / partial / full / over / short / zero), 8/8 pass.
 - ❌ NOT implemented for the RSI FX bot (`tick_once.py`), which is matrixed and stateless per-instrument with no cross-instrument view. The FX groups below still need a cap before that bot could go real-money.
+- ❌ NOT implemented for the Clenow ensemble — and this is precisely what killed its OOS test (2026-06-30). `clenow_diagnose.py` shows vol-parity concentrating 86.9% of the book into NAS100+SPX500+US30 in the −3.80% week. **Empirical proof this gate is load-bearing, not theoretical.** A correlation/sector cap on the equity-index group {NAS100, SPX500, US30, DE30} is a hard precondition for any Clenow V2.
 - Suggested groups (FX bot, still TODO): {XAU, XAG} metals · {NAS100, SPX500, US30} US equity · {EUR_USD, GBP_USD, AUD_USD} USD-shorts · {USD_JPY, EUR_JPY, GBP_JPY} JPY-shorts.
 
 ### Gate 12 — 6 months of paper trading on the exact deployed code
