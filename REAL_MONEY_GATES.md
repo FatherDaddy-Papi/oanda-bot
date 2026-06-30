@@ -39,6 +39,13 @@ Strategy parameters are frozen on data up to date X. Performance is then measure
   - **OOS run scheduled: 2026-06-23** (4 weeks out). Until that date, no parameter edits to the ensemble. On that date, re-run the ensemble on the additional ~4 weeks of D1 data that did not exist today and compare per-week Sharpe to the in-sample mean.
   - Pass criterion: OOS Sharpe (per-week) ≥ 0.10 (i.e. annualized ≥ ~0.72). OOS Sharpe degradation < 50% from in-sample 0.19.
 - Validity of the OOS test depends on this freeze being honored. If params are touched before 2026-06-23, the OOS clock restarts.
+- **OOS RESULT (run 2026-06-30, freeze honored — `clenow_ensemble.py` untouched since 2026-05-26):**
+  - Faithfulness check passed (OOS re-host in `clenow_oos.py` matches frozen `backtest_ensemble` byte-for-byte, max diff 0.0).
+  - In-sample weekly Sharpe +0.206 (ann +1.49). **OOS weekly Sharpe −0.259 (ann −1.87).** OOS cumulative −2.47% over 5 weeks.
+  - OOS weekly returns: [+0.73%, −3.80%, +0.13%, +0.39%, +0.13%]. 4 of 5 weeks positive; one −3.80% week (2026-06-02 rebalance) flipped the Sharpe negative.
+  - **Mechanical verdict: FAIL** (OOS Sharpe −0.26 < +0.10 threshold; degradation 226%).
+  - **Honest caveat: n=5 weekly observations is severely underpowered — one week dominates.** This FAIL is low-information, just as a 5-week "pass" would have been. The 4-week freeze window was a design error (too short). The result neither confirms nor refutes the in-sample edge.
+  - **Disciplined conclusion: Gate 3 does NOT pass. Strategy does NOT advance. We do not goalpost-move (no monthly peeking until it randomly crosses 0.10).** Any re-test must be a single, pre-committed, adequately-powered forward test, run once, outcome accepted.
 
 ### Gate 4 — Multi-regime survival
 Strategy is profitable in at least two of: (a) high-vol crisis (e.g., COVID March 2020), (b) trending (e.g., 2022), (c) chop/range (e.g., much of 2024). Single-regime profitability does not count.
